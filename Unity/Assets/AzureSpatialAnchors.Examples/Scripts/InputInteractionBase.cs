@@ -4,17 +4,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-#if UNITY_ANDROID || UNITY_IOS
-using UnityEngine.XR.ARFoundation;
-#endif
-
 namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
 {
     public abstract class InputInteractionBase : MonoBehaviour
     {
-#if UNITY_ANDROID || UNITY_IOS
-        ARRaycastManager arRaycastManager;
-#endif
         /// <summary>
         /// Destroying the attached Behaviour will result in the game or Scene
         /// receiving OnDestroy.
@@ -35,13 +28,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
         /// </summary>
         public virtual void Start()
         {
-#if UNITY_ANDROID || UNITY_IOS
-             arRaycastManager = FindObjectOfType<ARRaycastManager>();
-            if (arRaycastManager == null)
-            {
-                Debug.Log("Missing ARRaycastManager in scene");
-            }
-#endif
 #if WINDOWS_UWP || UNITY_WSA
             UnityEngine.XR.WSA.Input.InteractionManager.InteractionSourcePressed += InteractionManager_InteractionSourcePressed;
 #endif
@@ -117,15 +103,7 @@ namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
         /// <param name="touch">The touch.</param>
         protected virtual void OnTouchInteractionEnded(Touch touch)
         {
-#if UNITY_ANDROID || UNITY_IOS
-            List<ARRaycastHit> aRRaycastHits = new List<ARRaycastHit>();
-            if(arRaycastManager.Raycast(touch.position, aRRaycastHits) && aRRaycastHits.Count > 0)
-            {
-                ARRaycastHit hit = aRRaycastHits[0];
-                
-                OnSelectObjectInteraction(hit.pose.position, hit);
-            }
-#elif WINDOWS_UWP || UNITY_WSA
+#if WINDOWS_UWP || UNITY_WSA
             RaycastHit hit;
             if (TryGazeHitTest(out hit))
             {

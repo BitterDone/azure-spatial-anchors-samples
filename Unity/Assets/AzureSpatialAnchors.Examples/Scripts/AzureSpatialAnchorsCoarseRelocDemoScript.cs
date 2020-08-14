@@ -217,9 +217,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
                     currentAppState = AppState.DemoStepStopWatcher;
                     Pose anchorPose = Pose.identity;
 
-#if UNITY_ANDROID || UNITY_IOS
-                    anchorPose = currentCloudAnchor.GetPose();
-#endif
 
                     // HoloLens: The position will be set based on the unityARUserAnchor that was located.
                     GameObject spawnedObject = SpawnNewAnchoredObject(anchorPose.position, anchorPose.rotation, cloudAnchor);
@@ -230,13 +227,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
 
         public void OnApplicationFocus(bool focusStatus)
         {
-#if UNITY_ANDROID
-            // We may get additional permissions at runtime. Enable the sensors once app is resumed
-            if (focusStatus && locationProvider != null)
-            {
-                ConfigureSensors();
-            }
-#endif
         }
 
         /// <summary>
@@ -278,9 +268,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity.Examples
             // Sanity check that the object is still where we expect
             Pose anchorPose = Pose.identity;
 
-#if UNITY_ANDROID || UNITY_IOS
-            anchorPose = currentCloudAnchor.GetPose();
-#endif
             // HoloLens: The position will be set based on the unityARUserAnchor that was located.
 
             SpawnOrMoveCurrentAnchoredObject(anchorPose.position, anchorPose.rotation);
