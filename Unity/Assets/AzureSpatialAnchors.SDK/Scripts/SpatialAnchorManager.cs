@@ -10,27 +10,6 @@ using UnityEngine;
 using UnityEngine.XR.ARSubsystems;
 using System.Runtime.InteropServices;
 
-#if UNITY_ANDROID || UNITY_IOS
-using UnityEngine.XR.ARFoundation;
-using System.IO;
-
-#if !UNITY_2019_3_OR_NEWER
-// Adapt AR Foundation 3 types to AR Foundation 2 types Unity 2019.2 and earlier.
-using ARAnchor = UnityEngine.XR.ARFoundation.ARReferencePoint;
-using ARAnchorManager = UnityEngine.XR.ARFoundation.ARReferencePointManager;
-using ARAnchorsChangedEventArgs = UnityEngine.XR.ARFoundation.ARReferencePointsChangedEventArgs;
-#endif
-
-#endif
-
-#if UNITY_IOS
-using Microsoft.Azure.SpatialAnchors.Unity.IOS;
-#endif
-
-#if UNITY_ANDROID
-using Microsoft.Azure.SpatialAnchors.Unity.Android;
-#endif
-
 #if UNITY_WSA || WINDOWS_UWP
 using UnityEngine.XR.WSA;
 #endif
@@ -63,23 +42,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
         protected bool isSessionStarted = false;
         protected CloudSpatialAnchorSession session = null;
         protected SessionStatus sessionStatus = null;
-
-        // Android-specific variables
-#if UNITY_ANDROID
-        private static bool javaInitialized = false; // We should only run the Java initialization once
-#endif
-        //ARFoundation specific variables
-#if UNITY_ANDROID || UNITY_IOS
-        protected long lastFrameProcessedTimeStamp;
-        protected static Dictionary<string, ARAnchor> pointerToAnchors = new Dictionary<string, ARAnchor>();
-        protected List<AnchorLocatedEventArgs> pendingEventArgs = new List<AnchorLocatedEventArgs>();
-        internal static ARAnchorManager arAnchorManager = null;
-        protected ARCameraManager arCameraManager = null;
-        protected ARSession arSession = null;
-        protected Camera mainCamera;
-        protected bool ARSessionInitialized = false;
-#endif // UNITY_ANDROID
-
         #endregion // Member Variables
 
         #region Unity Inspector Variables
@@ -127,107 +89,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
                 throw new InvalidOperationException("This operation cannot be completed without an active session.");
             }
         }
-
-#if UNITY_ANDROID || UNITY_IOS
-        /// <summary>
-        /// Sends the latest AR Foundation frame to Azure Spatial Anchors.
-        /// </summary>
-        private void ProcessLatestFrame()
-        {
-            if (!isSessionStarted)
-            {
-                return;
-            }
-
-            var cameraParams = new XRCameraParams
-            {
-                zNear = mainCamera.nearClipPlane,
-                zFar = mainCamera.farClipPlane,
-                screenWidth = Screen.width,
-                screenHeight = Screen.height,
-                screenOrientation = Screen.orientation
-            };
-
-            XRCameraFrame xRCameraFrame;
-            if (arCameraManager.subsystem.TryGetLatestFrame(cameraParams, out xRCameraFrame))
-            {
-                long latestFrameTimeStamp = xRCameraFrame.timestampNs;
-
-                bool newFrameToProcess = latestFrameTimeStamp > lastFrameProcessedTimeStamp;
-
-                if (newFrameToProcess)
-                {
-                    session.ProcessFrame(xRCameraFrame.nativePtr.GetPlatformPointer());
-                    lastFrameProcessedTimeStamp = latestFrameTimeStamp;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Tries to get an anchor from an ARkit or Arcore anchor pointer.
-        /// </summary>
-        /// <param name="intPtr">An ARKit or ARcore anchor pointer.</param>
-        /// <returns>An anchor if found; otherwise null.</returns>
-        [System.Obsolete("This method is obsolete. Use AnchorFromPointer instead.", false)]
-        internal static ARAnchor ReferencePointFromPointer(IntPtr intPtr)
-        {
-            return AnchorFromPointer(intPtr);
-        }
-
-        /// <summary>
-        /// Tries to get an anchor from an ARkit or Arcore anchor pointer.
-        /// </summary>
-        /// <param name="intPtr">An ARKit or ARcore anchor pointer.</param>
-        /// <returns>An anchor if found; otherwise null.</returns>
-        internal static ARAnchor AnchorFromPointer(IntPtr intPtr)
-        {
-            string key = intPtr.GetPlatformKey();
-            if (pointerToAnchors.ContainsKey(key))
-            {
-                return pointerToAnchors[key];
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// AR Foundation can discover platform anchors *after* ASA has provided the CloudSpatialAnchor to us
-        /// When AR Foundation finds the platform anchor (usually within a frame or two) we will call the
-        /// anchor located event.
-        /// </summary>
-        private void ProcessPendingEventArgs()
-        {
-            if (pendingEventArgs.Count > 0)
-            {
-                List<AnchorLocatedEventArgs> readyList = new List<AnchorLocatedEventArgs>();
-                lock (pendingEventArgs)
-                {
-                    foreach (AnchorLocatedEventArgs args in pendingEventArgs)
-                    {
-                        string lookupValue = args.Anchor.LocalAnchor.GetPlatformKey();
-
-                        if (pointerToAnchors.ContainsKey(lookupValue))
-                        {
-                            readyList.Add(args);
-                        }
-                    }
-
-                    foreach (var ready in readyList)
-                    {
-                        pendingEventArgs.Remove(ready);
-                    }
-                }
-
-                if (readyList.Count > 0)
-                {
-                    foreach (var args in readyList)
-                    {
-                        AnchorLocated?.Invoke(this, args);
-                    }
-                }
-            }
-        }
-#endif
 
         #endregion // Internal Methods
 
@@ -389,37 +250,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
                     throw new InvalidOperationException("Unknown auth mode");
             }
 
-#if UNITY_ANDROID || UNITY_IOS
-            // Check AR Foundation configuration
-            // On Android the ARCameraManager can take a few seconds to get going.
-            int retries = 0;
-            while (retries++ < 60)
-            {
-                if (arCameraManager != null && arCameraManager.enabled)
-                {
-                    break;
-                }
-                await Task.Delay(100);
-            }
-
-            if (arCameraManager == null || !arCameraManager.enabled)
-            {
-                Debug.LogError("Need an enabled ARCameraManager in the scene");
-                return false;
-            }
-
-            if (arSession == null || !arSession.enabled)
-            {
-                Debug.LogError("Need an enabled ARSession in the scene");
-                return false;
-            }
-
-            if (arAnchorManager == null || !arAnchorManager.enabled)
-            {
-                Debug.LogError("Need an enabled ARAnchorManager in the scene");
-                return false;
-            }
-#endif
             // All checks passed
             return true;
         }
@@ -439,18 +269,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             {
                 return;
             }
-#if UNITY_ANDROID || UNITY_IOS
-            // if the anchor was located, wait for AR Foundation to notice the anchor we added
-            // before firing the event
-            if (args.Status == LocateAnchorStatus.Located)
-            {
-                lock (pendingEventArgs)
-                {
-                    pendingEventArgs.Add(args);
-                }
-            }
-            else // otherwise there is no anchor for AR Foundation to find, so just fire the event
-#endif
             {
                 AnchorLocated?.Invoke(this, args);
             }
@@ -596,78 +414,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             deferral.Complete();
         }
 
-#if UNITY_ANDROID || UNITY_IOS
-        /// <summary>
-        /// Called when ARFoundation changes states.
-        /// We wait until the ARFoundation session is tracking to complete initialization
-        /// </summary>
-        /// <param name="obj">state change arguments</param>
-        private void ARSession_stateChanged(ARSessionStateChangedEventArgs obj)
-        {
-            Debug.Log($"ARSession state changed to {obj.state}");
-            if (obj.state == ARSessionState.SessionTracking && !ARSessionInitialized)
-            {
-                CompleteARFoundationInitialization();
-            }
-        }
-
-        /// <summary>
-        /// Keeps track of when platform anchors (surfaced by AR Foundation as ARAnchors) are
-        /// added/updated/removed by AR Foundation.  This is critical for mapping Azure Spatial Anchors CloudAnchors
-        /// to Unity AR Foundation anchors.
-        /// </summary>
-        /// <param name="obj">Event args with information about what has changed.</param>
-        private void ARAnchorManager_anchorsChanged(ARAnchorsChangedEventArgs obj)
-        {
-            lock (pointerToAnchors)
-            {
-                foreach (ARAnchor addedAnchor in obj.added)
-                {
-                    string lookupkey = addedAnchor.nativePtr.GetPlatformPointer().GetPlatformKey();
-                    if (!pointerToAnchors.ContainsKey(lookupkey))
-                    {
-                        pointerToAnchors.Add(lookupkey, addedAnchor);
-                    }
-                }
-
-                foreach (ARAnchor removedAnchor in obj.removed)
-                {
-                    string toremove = null;
-                    foreach (var kvp in pointerToAnchors)
-                    {
-                        if (kvp.Value == removedAnchor)
-                        {
-                            toremove = kvp.Key;
-                            break;
-                        }
-                    }
-
-                    if (toremove != null)
-                    {
-                        pointerToAnchors.Remove(toremove);
-                    }
-                }
-
-                foreach (ARAnchor updatedAnchor in obj.updated)
-                {
-                    string lookupKey = updatedAnchor.nativePtr.GetPlatformPointer().GetPlatformKey();
-                    if (!pointerToAnchors.ContainsKey(lookupKey))
-                    {
-                        pointerToAnchors.Add(lookupKey, updatedAnchor);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Called by AR Foundation to indicate that there is a new frame to process.
-        /// </summary>
-        /// <param name="obj">Information about the frame. Not used.</param>
-        private void ArCameraManager_frameReceived(ARCameraFrameEventArgs obj)
-        {
-            ProcessLatestFrame();
-        }
-#endif
 #endregion // Event Handlers
 
 #region Unity Overrides
@@ -693,23 +439,8 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
         /// </summary>
         protected async virtual void Start()
         {
-#if UNITY_ANDROID || UNITY_IOS
-            mainCamera = Camera.main;
-            arCameraManager = FindObjectOfType<ARCameraManager>();
-            arSession = FindObjectOfType<ARSession>();
-            arAnchorManager = FindObjectOfType<ARAnchorManager>();
-#endif
-
             // Only allow the manager to start if it is properly configured.
             await EnsureValidConfiguration(disable: true, exception: false);
-
-#if UNITY_ANDROID || UNITY_IOS
-#if UNITY_2019_3_OR_NEWER
-            arAnchorManager.anchorsChanged += ARAnchorManager_anchorsChanged;
-#else
-            arAnchorManager.referencePointsChanged += ARAnchorManager_anchorsChanged;
-#endif
-#endif
         }
 
         /// <summary>
@@ -717,9 +448,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
         /// </summary>
         protected virtual void Update()
         {
-#if UNITY_ANDROID || UNITY_IOS
-            ProcessPendingEventArgs();
-#endif
         }
 #endregion // Unity Overrides
 
@@ -743,45 +471,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
 
             // Only allow a session to be created the manager is properly configured.
             await EnsureValidConfiguration(disable: false, exception: true);
-
-#if UNITY_ANDROID // Android Only
-            // We should only run the Java initialization once
-            if (!javaInitialized)
-            {
-                // Create a TaskCompletionSource that we can use to know when
-                // the Java plugin has completed initialization on the Android
-                // thread.
-                TaskCompletionSource<bool> pluginInit = new TaskCompletionSource<bool>();
-
-                // Make sure ARCore is running. This code must be executed
-                // on a Java thread provided by Android.
-                AndroidHelper.Instance.DispatchUiThread(unityActivity =>
-                {
-                    // Create the plugin
-                    using (AndroidJavaClass cloudServices = new AndroidJavaClass("com.microsoft.CloudServices"))
-                    {
-                        // Initialize the plugin
-                        cloudServices.CallStatic("initialize", unityActivity);
-
-                        // Update static variable to say that the plugin has been initialized
-                        javaInitialized = true;
-
-                        // Set the task completion source so the CreateSession method can
-                        // continue back on the Unity thread.
-                        pluginInit.SetResult(true);
-                    }
-                });
-
-                // Wait for the plugin to complete initialization on the
-                // Java thread.
-                await pluginInit.Task;
-            }
-#endif
-
-#if UNITY_ANDROID || UNITY_IOS
-            // Ask for ar frames to process
-            arCameraManager.frameReceived += ArCameraManager_frameReceived;
-#endif
 
             // Create the session instance
             session = new CloudSpatialAnchorSession();
@@ -811,41 +500,13 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             session.AnchorLocated += OnAnchorLocated;
             session.LocateAnchorsCompleted += OnLocateAnchorsCompleted;
             session.Error += OnError;
-
-#if UNITY_ANDROID || UNITY_IOS
-            ARSession.stateChanged += ARSession_stateChanged;
-
-            // Wait for a valid AR Session in case we are starting before ARFoundation is ready.
-            if (ARSession.state == ARSessionState.SessionTracking)
-            {
-                CompleteARFoundationInitialization();
-            }
-            else
-            {
-                Debug.Log($"ARSession not yet available ({ARSession.state}, will complete initialization when session is running");
-            }
-#elif UNITY_WSA || WINDOWS_UWP
+#if UNITY_WSA || WINDOWS_UWP
             // No need to set a native session pointer for HoloLens.  We can just notify that the Azure Spatial Anchors session has been created
             OnSessionCreated();
 #else
             throw new NotSupportedException("The platform is not supported.");
 #endif
         }
-
-#if UNITY_ANDROID || UNITY_IOS
-        /// <summary>
-        /// Called the first time ARFoundation indicates the session is tracking and
-        /// thus can be relied upon to be fully initialized.
-        /// </summary>
-        protected void CompleteARFoundationInitialization()
-        {
-            session.Session = arSession.subsystem.nativePtr.GetPlatformPointer();
-            // Ask for ar frames to process
-            arCameraManager.frameReceived += ArCameraManager_frameReceived;
-            ARSessionInitialized = true;
-            OnSessionCreated();
-        }
-#endif
 
         /// <summary>
         /// Destroys any existing session and unsubscribes from all events.
@@ -859,13 +520,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
                 return;
             }
 
-#if UNITY_ANDROID || UNITY_IOS
-            // Forget about cached AR Foundation anchors
-            pointerToAnchors.Clear();
-
-            // Stop getting frames
-            arCameraManager.frameReceived -= ArCameraManager_frameReceived;
-#endif
             // Make sure the session is stopped
             if (isSessionStarted) { StopSession(); }
 

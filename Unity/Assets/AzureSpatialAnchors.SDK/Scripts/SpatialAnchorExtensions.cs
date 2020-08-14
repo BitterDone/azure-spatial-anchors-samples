@@ -6,17 +6,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using System.Runtime.InteropServices;
 using UnityEngine.XR.ARFoundation;
-#if UNITY_IOS
-using Microsoft.Azure.SpatialAnchors.Unity.IOS;
-using PlatformKey = System.String;
-#endif
-#if UNITY_ANDROID
-using PlatformKey = System.IntPtr;
-#endif
-#if UNITY_ANDROID || UNITY_IOS
-using Microsoft.Azure.SpatialAnchors.Unity.ARFoundation;
-using NativeAnchor = Microsoft.Azure.SpatialAnchors.Unity.ARFoundation.UnityARFoundationAnchorComponent;
-#elif WINDOWS_UWP || UNITY_WSA
+#if WINDOWS_UWP || UNITY_WSA
 using UnityEngine.XR.WSA;
 using NativeAnchor = UnityEngine.XR.WSA.WorldAnchor;
 #else
@@ -25,55 +15,11 @@ using NativeAnchor = UnityEngine.MonoBehaviour;
 
 namespace Microsoft.Azure.SpatialAnchors.Unity
 {
-#if UNITY_ANDROID || UNITY_IOS
-    [StructLayout(layoutKind: LayoutKind.Sequential)]
-    struct UnityPointer
-    {
-        public IntPtr UnityInternal;
-        public IntPtr platformPointer;
-    }
-#endif
-
     /// <summary>
     /// Extension methods to help manage spatial anchors.
     /// </summary>
     public static class SpatialAnchorExtensions
     {
-#if UNITY_ANDROID || UNITY_IOS
-        /// <summary>
-        /// Gets the platform pointer using internal knowledge of the layout 
-        /// of unity's ARFoundation objects. 
-        /// </summary>
-        /// <param name="intPtr">The pointer to an ARFoundation object</param>
-        /// <returns>A pointer to the underlying platform (ARKit/ARCore) anchor</returns>
-        static internal IntPtr GetPlatformPointer(this IntPtr intPtr)
-        {
-            if (intPtr == IntPtr.Zero)
-            {
-                return IntPtr.Zero;
-            }
-
-            UnityPointer pointerGetter = Marshal.PtrToStructure<UnityPointer>(intPtr);
-            return pointerGetter.platformPointer;
-        }
-
-        /// <summary>
-        /// Gets a key that can be used to map a platform anchor to an ARReference point
-        /// </summary>
-        /// <param name="intPtr">The platform (ARkit or ARCore) anchor pointer</param>
-        /// <returns>A string for the dictionary lookup</returns>
-        static internal string GetPlatformKey(this IntPtr intPtr)
-        {
-#if UNITY_IOS
-            return ARKitNativeHelpers.GetArkitAnchorIdFromPointer(intPtr);
-#endif
-#if UNITY_ANDROID
-            return intPtr.ToString();
-#endif
-        }
-
-#endif //  UNITY_ANDROID || UNITY_IOS
-
         /// <summary>
         /// Applies the specified cloud anchor to the GameObject by
         /// creating or updating the native anchor.
@@ -301,9 +247,7 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             // Placeholder
             IntPtr ptr = IntPtr.Zero;
 
-#if UNITY_ANDROID || UNITY_IOS
-            ptr = anchor.WorldAnchorHandle;
-#elif WINDOWS_UWP || UNITY_WSA
+#if WINDOWS_UWP || UNITY_WSA
             ptr = anchor.GetNativeSpatialAnchorPtr();
 #else
             throw new PlatformNotSupportedException("Unable to retrieve the native anchor pointer. The platform is not supported.");

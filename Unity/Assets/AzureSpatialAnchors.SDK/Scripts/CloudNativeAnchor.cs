@@ -5,10 +5,7 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 
-#if UNITY_ANDROID || UNITY_IOS
-using Microsoft.Azure.SpatialAnchors.Unity.ARFoundation;
-using NativeAnchor = Microsoft.Azure.SpatialAnchors.Unity.ARFoundation.UnityARFoundationAnchorComponent;
-#elif WINDOWS_UWP || UNITY_WSA
+#if WINDOWS_UWP || UNITY_WSA
 using UnityEngine.XR.WSA;
 using NativeAnchor = UnityEngine.XR.WSA.WorldAnchor;
 #else
