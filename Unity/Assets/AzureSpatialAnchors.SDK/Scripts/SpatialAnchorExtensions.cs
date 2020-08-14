@@ -62,24 +62,6 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             // Update the World Anchor to use the cloud-based native anchor
             nativeAnchor.SetNativeSpatialAnchorPtr(cloudAnchor.LocalAnchor);
 
-            #elif UNITY_IOS || UNITY_ANDROID
-
-            // On iOS and Android we need to remove any existing native anchor,
-            // move the object to the new pose, and then re-apply the native anchor.
-
-            // Delete any existing native anchor
-            gameObject.DeleteNativeAnchor();
-
-            // Get the pose from the cloud anchor
-            Pose pose = cloudAnchor.GetPose();
-
-            // Move the GameObject to match the new pose
-            gameObject.transform.position = pose.position;
-            gameObject.transform.rotation = pose.rotation;
-
-            // Add the native anchor back on
-            nativeAnchor = gameObject.CreateNativeAnchor();
-
             #else
 
             throw new PlatformNotSupportedException("Unable to apply the cloud anchor. The platform is not supported.");
@@ -295,11 +277,7 @@ namespace Microsoft.Azure.SpatialAnchors.Unity
             // Placeholder
             Pose anchorPose = Pose.identity;
 
-#if UNITY_ANDROID || UNITY_IOS
-            return AnchorHelpers.GetPose(cloudAnchor);
-#else
             throw new PlatformNotSupportedException($"Platform is not supported.");
-#endif
         }
 
         /// <summary>
